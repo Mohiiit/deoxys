@@ -303,6 +303,8 @@ Each feature is designed to ensure optimal performance and seamless integration 
 
 ## 👍 Contribute
 
+You can contribute as per this:
+
 ## 🤝 Partnerships
 
 To establish a partnership with the Kasar team, or if you have any suggestion or
