@@ -148,7 +148,8 @@ async fn fetch_state_update_with_block(
 ) -> Result<(StateUpdate, p::Block), ProviderError> {
     #[allow(deprecated)] // Sequencer-specific functions are deprecated. Use it via the Provider trait instead.
     let state_update_with_block = provider.get_state_update_with_block(block_id.into()).await?;
-
+    log::warn!("The fetched state udpate with block is {:?}", state_update_with_block);
+    println!("state update with the block is : {:?}",state_update_with_block);
     Ok((state_update_with_block.state_update.to_state_update_core(), state_update_with_block.block))
 }
 
@@ -214,5 +215,6 @@ async fn fetch_class(
     provider: &SequencerGatewayProvider,
 ) -> Result<(Felt, ContractClass), ProviderError> {
     let contract_class = provider.get_class(starknet_core::types::BlockId::from(block_id), class_hash).await?;
+    log::info!("The fetched contract class is{:?}", contract_class);
     Ok((class_hash, contract_class))
 }

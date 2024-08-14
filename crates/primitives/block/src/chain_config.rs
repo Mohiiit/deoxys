@@ -10,7 +10,7 @@ use std::{collections::BTreeMap, ops::Deref, time::Duration};
 
 pub mod eth_core_contract_address {
     pub const MAINNET: &str = "0xc662c410C0ECf747543f5bA90660f6ABeBD9C8c4";
-    pub const SEPOLIA_TESTNET: &str = "0xE2Bb56ee936fd6433DC0F6e7e3b8365C906AA057";
+    pub const SEPOLIA_TESTNET: &str = "0x74Ca1aC5BD4c3c97006d2B7b9375Dd3B6C17ACcD";
     pub const SEPOLIA_INTEGRATION: &str = "0x4737c0c1B4D5b1A687B42610DdabEE781152359c";
 }
 
@@ -120,7 +120,7 @@ impl ChainConfig {
 
             eth_core_contract_address: eth_core_contract_address::MAINNET.parse().expect("parsing a constant"),
 
-            latest_protocol_version: StarknetVersion::STARKNET_VERSION_0_13_2,
+            latest_protocol_version: StarknetVersion::STARKNET_VERSION_0_13_1,
             block_time: Duration::from_secs(6 * 60),
             pending_block_update_time: Duration::from_secs(2),
 
@@ -153,8 +153,8 @@ impl ChainConfig {
 
     pub fn starknet_sepolia() -> Self {
         Self {
-            chain_name: "Starknet Sepolia".into(),
-            chain_id: ChainId::Sepolia,
+            chain_name: "kakarot-sepolia".into(),
+            chain_id: ChainId::Other("kkrt".into()),
             eth_core_contract_address: eth_core_contract_address::SEPOLIA_TESTNET.parse().expect("parsing a constant"),
             ..Self::starknet_mainnet()
         }
@@ -173,8 +173,8 @@ impl ChainConfig {
 
     pub fn test_config() -> Self {
         Self {
-            chain_name: "Test".into(),
-            chain_id: ChainId::Other("MADARA_TEST".into()),
+            chain_name: "kkrt".into(),
+            chain_id: ChainId::Other("11155111".into()),
             ..ChainConfig::starknet_sepolia()
         }
     }

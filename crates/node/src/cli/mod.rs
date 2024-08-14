@@ -92,7 +92,7 @@ impl NetworkType {
     pub fn uri(&self) -> &'static str {
         match self {
             NetworkType::Main => "https://alpha-mainnet.starknet.io",
-            NetworkType::Test => "https://alpha-sepolia.starknet.io",
+            NetworkType::Test => "https://gateway.kakarot.sw-dev.io",
             NetworkType::Integration => "https://integration-sepolia.starknet.io",
         }
     }
