@@ -10,7 +10,7 @@ use std::{collections::BTreeMap, ops::Deref, time::Duration};
 
 pub mod eth_core_contract_address {
     pub const MAINNET: &str = "0xc662c410C0ECf747543f5bA90660f6ABeBD9C8c4";
-    pub const SEPOLIA_TESTNET: &str = "0x74Ca1aC5BD4c3c97006d2B7b9375Dd3B6C17ACcD";
+    pub const SEPOLIA_TESTNET: &str = "0xc7c9ea7fD0921Cb6EDd9a3184F88cF1b821aA82B";
     pub const SEPOLIA_INTEGRATION: &str = "0x4737c0c1B4D5b1A687B42610DdabEE781152359c";
 }
 
@@ -153,8 +153,8 @@ impl ChainConfig {
 
     pub fn starknet_sepolia() -> Self {
         Self {
-            chain_name: "kakarot-sepolia".into(),
-            chain_id: ChainId::Other("kkrt".into()),
+            chain_name: "KKRT_BETA".into(),
+            chain_id: ChainId::Other("KKRT_BETA".into()),
             eth_core_contract_address: eth_core_contract_address::SEPOLIA_TESTNET.parse().expect("parsing a constant"),
             ..Self::starknet_mainnet()
         }
