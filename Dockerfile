@@ -34,5 +34,19 @@ WORKDIR /usr/local/bin
 # Copy the compiled binary from the builder stage
 COPY --from=builder /usr/src/deoxys/target/release/deoxys .
 
-# Set the entrypoint
-CMD ["./deoxys"]
+# Create the data directory
+RUN mkdir -p /var/lib/deoxys-testnet
+
+# Expose the port
+EXPOSE 9944
+
+# Set the entrypoint to tini
+ENTRYPOINT ["/usr/bin/tini", "--"]
+
+# Set the command
+CMD ["/usr/local/bin/deoxys", \
+     "--rpc-external", \
+     "--rpc-cors", "*", \
+     "--base-path", "/var/lib/deoxys-testnet", \
+     "--network", "test", \
+     "--l1-endpoint", "https://eth-sepolia.g.alchemy.com/v2/WIUR5JUZXieEBkze6Xs3IOXWhsS840TX"]

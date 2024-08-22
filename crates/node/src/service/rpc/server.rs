@@ -85,7 +85,7 @@ pub async fn start_server(
         .and_then(|a| a.into_std())
         .with_context(|| format!("binding to address: {addr}"))?;
     let local_addr = std_listener.local_addr().ok();
-    let host_filter = host_filtering(cors.is_some(), local_addr);
+    let host_filter = host_filtering(false, local_addr);
 
     let http_middleware = tower::ServiceBuilder::new()
 		.option_layer(host_filter)
