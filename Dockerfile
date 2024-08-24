@@ -46,7 +46,6 @@ ENTRYPOINT ["/usr/bin/tini", "--"]
 # Set the command
 CMD ["/usr/local/bin/deoxys", \
      "--rpc-external", \
-     "--rpc-cors", "*", \
      "--base-path", "/var/lib/deoxys-testnet", \
      "--network", "test", \
      "--l1-endpoint", "https://eth-sepolia.g.alchemy.com/v2/WIUR5JUZXieEBkze6Xs3IOXWhsS840TX"]
