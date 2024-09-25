@@ -1,6 +1,7 @@
 #![allow(clippy::new_without_default)]
 
 pub mod service;
+pub mod tests_common;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -27,11 +28,16 @@ where
 static CTRL_C: AtomicBool = AtomicBool::new(false);
 
 async fn graceful_shutdown_inner() {
-    let mut sigint =
-        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("SIGINT not supported");
+    let sigint = async {
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut signal) => signal.recv().await,
+            // SIGTERM not supported
+            Err(_) => core::future::pending().await,
+        }
+    };
     tokio::select! {
         _ = tokio::signal::ctrl_c() => {},
-        _ = sigint.recv() => {},
+        _ = sigint => {},
     };
     CTRL_C.store(true, Ordering::SeqCst);
 }

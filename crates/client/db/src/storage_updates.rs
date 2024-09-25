@@ -1,38 +1,30 @@
-use crate::DeoxysBackend;
-use crate::DeoxysStorageError;
-use dp_block::{DeoxysBlock, DeoxysMaybePendingBlock, DeoxysMaybePendingBlockInfo, DeoxysPendingBlock};
-use dp_class::ConvertedClass;
-use dp_state_update::{
+use crate::MadaraBackend;
+use crate::MadaraStorageError;
+use mp_block::{MadaraBlock, MadaraMaybePendingBlock, MadaraMaybePendingBlockInfo, MadaraPendingBlock};
+use mp_class::ConvertedClass;
+use mp_state_update::{
     ContractStorageDiffItem, DeployedContractItem, NonceUpdate, ReplacedClassItem, StateDiff, StorageEntry,
 };
-use starknet_core::types::ContractClass;
 use starknet_types_core::felt::Felt;
 use std::collections::HashMap;
 
-#[derive(Clone, Debug)]
-pub struct DbClassUpdate {
-    pub class_hash: Felt,
-    pub contract_class: ContractClass,
-    pub compiled_class_hash: Felt,
-}
-
-impl DeoxysBackend {
+impl MadaraBackend {
     /// NB: This functions needs to run on the rayon thread pool
     pub fn store_block(
         &self,
-        block: DeoxysMaybePendingBlock,
+        block: MadaraMaybePendingBlock,
         state_diff: StateDiff,
         converted_classes: Vec<ConvertedClass>,
-    ) -> Result<(), DeoxysStorageError> {
+    ) -> Result<(), MadaraStorageError> {
         let block_n = block.info.block_n();
         let state_diff_cpy = state_diff.clone();
 
         let task_block_db = || match block.info {
-            DeoxysMaybePendingBlockInfo::Pending(info) => {
-                self.block_db_store_pending(&DeoxysPendingBlock { info, inner: block.inner }, &state_diff_cpy)
+            MadaraMaybePendingBlockInfo::Pending(info) => {
+                self.block_db_store_pending(&MadaraPendingBlock { info, inner: block.inner }, &state_diff_cpy)
             }
-            DeoxysMaybePendingBlockInfo::NotPending(info) => {
-                self.block_db_store_block(&DeoxysBlock { info, inner: block.inner }, &state_diff_cpy)
+            MadaraMaybePendingBlockInfo::NotPending(info) => {
+                self.block_db_store_block(&MadaraBlock { info, inner: block.inner }, &state_diff_cpy)
             }
         };
 
@@ -76,15 +68,9 @@ impl DeoxysBackend {
             }
         };
 
-        let task_class_db = || {
-            let (class_info_updates, compiled_class_updates): (Vec<_>, Vec<_>) = converted_classes
-                .into_iter()
-                .map(|ConvertedClass { class_infos, class_compiled }| (class_infos, class_compiled))
-                .unzip();
-            match block_n {
-                None => self.class_db_store_pending(&class_info_updates, &compiled_class_updates),
-                Some(block_n) => self.class_db_store_block(block_n, &class_info_updates, &compiled_class_updates),
-            }
+        let task_class_db = || match block_n {
+            None => self.class_db_store_pending(&converted_classes),
+            Some(block_n) => self.class_db_store_block(block_n, &converted_classes),
         };
 
         let ((r1, r2), r3) = rayon::join(|| rayon::join(task_block_db, task_contract_db), task_class_db);
@@ -92,7 +78,7 @@ impl DeoxysBackend {
         r1.and(r2).and(r3)
     }
 
-    pub fn clear_pending_block(&self) -> Result<(), DeoxysStorageError> {
+    pub fn clear_pending_block(&self) -> Result<(), MadaraStorageError> {
         self.block_db_clear_pending()?;
         self.contract_db_clear_pending()?;
         self.class_db_clear_pending()?;

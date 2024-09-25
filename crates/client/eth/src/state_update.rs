@@ -4,10 +4,10 @@ use crate::{
     utils::{convert_log_state_update, trim_hash},
 };
 use anyhow::Context;
-use dc_db::DeoxysBackend;
-use dp_transactions::MAIN_CHAIN_ID;
-use dp_utils::channel_wait_or_graceful_shutdown;
 use futures::StreamExt;
+use mc_db::MadaraBackend;
+use mp_transactions::MAIN_CHAIN_ID;
+use mp_utils::channel_wait_or_graceful_shutdown;
 use serde::Deserialize;
 use starknet_types_core::felt::Felt;
 
@@ -31,7 +31,7 @@ pub async fn get_initial_state(client: &EthereumClient) -> anyhow::Result<L1Stat
 /// verified state
 pub async fn listen_and_update_state(
     eth_client: &EthereumClient,
-    backend: &DeoxysBackend,
+    backend: &MadaraBackend,
     block_metrics: &L1BlockMetrics,
     chain_id: Felt,
 ) -> anyhow::Result<()> {
@@ -50,7 +50,7 @@ pub async fn listen_and_update_state(
 }
 
 pub fn update_l1(
-    backend: &DeoxysBackend,
+    backend: &MadaraBackend,
     state_update: L1StateUpdate,
     block_metrics: &L1BlockMetrics,
     chain_id: Felt,
@@ -78,7 +78,7 @@ pub fn update_l1(
 }
 
 pub async fn state_update_worker(
-    backend: &DeoxysBackend,
+    backend: &MadaraBackend,
     eth_client: &EthereumClient,
     chain_id: Felt,
 ) -> anyhow::Result<()> {
@@ -106,10 +106,10 @@ mod eth_client_event_subscription_test {
     use std::{sync::Arc, time::Duration};
 
     use alloy::{node_bindings::Anvil, providers::ProviderBuilder, sol};
-    use dc_db::DatabaseService;
-    use dc_metrics::MetricsService;
-    use dp_block::chain_config::ChainConfig;
-    use dp_convert::ToFelt;
+    use mc_db::DatabaseService;
+    use mc_metrics::{MetricsRegistry, MetricsService};
+    use mp_chain_config::ChainConfig;
+    use mp_convert::ToFelt;
     use rstest::*;
     use tempfile::TempDir;
     use url::Url;
@@ -130,6 +130,7 @@ mod eth_client_event_subscription_test {
     );
 
     const L2_BLOCK_NUMBER: u64 = 662703;
+    const ANOTHER_ANVIL_PORT: u16 = 8548;
     const EVENT_PROCESSING_TIME: u64 = 2; // Time to allow for event processing in seconds
 
     /// Test the event subscription and state update functionality
@@ -145,11 +146,16 @@ mod eth_client_event_subscription_test {
     #[tokio::test]
     async fn listen_and_update_state_when_event_fired_works() {
         // Start Anvil instance
-        let anvil = Anvil::new().block_time(1).chain_id(1337).try_spawn().expect("failed to spawn anvil instance");
+        let anvil = Anvil::new()
+            .block_time(1)
+            .chain_id(1337)
+            .port(ANOTHER_ANVIL_PORT)
+            .try_spawn()
+            .expect("failed to spawn anvil instance");
         println!("Anvil started and running at `{}`", anvil.endpoint());
 
         // Set up chain info
-        let chain_info = Arc::new(ChainConfig::test_config());
+        let chain_info = Arc::new(ChainConfig::test_config().unwrap());
 
         // Set up database paths
         let temp_dir = TempDir::new().expect("issue while creating temporary directory");
@@ -158,14 +164,14 @@ mod eth_client_event_subscription_test {
 
         // Initialize database service
         let db = Arc::new(
-            DatabaseService::new(&base_path, backup_dir, false, chain_info.clone())
+            DatabaseService::new(&base_path, backup_dir, false, chain_info.clone(), &MetricsRegistry::dummy())
                 .await
                 .expect("Failed to create database service"),
         );
 
         // Set up metrics service
         let prometheus_service = MetricsService::new(true, false, 9615).unwrap();
-        let l1_block_metrics = L1BlockMetrics::register(&prometheus_service.registry()).unwrap();
+        let l1_block_metrics = L1BlockMetrics::register(prometheus_service.registry()).unwrap();
 
         let rpc_url: Url = anvil.endpoint().parse().expect("issue while parsing");
         let provider = ProviderBuilder::new().on_http(rpc_url);

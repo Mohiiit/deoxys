@@ -8,7 +8,7 @@
 
 use crate::{clone_account_tx, contract_addr, nonce, tx_hash};
 use blockifier::transaction::account_transaction::AccountTransaction;
-use dp_class::ConvertedClass;
+use mp_class::ConvertedClass;
 use starknet_api::{
     core::{ContractAddress, Nonce},
     transaction::TransactionHash,
@@ -22,6 +22,7 @@ use std::{
 
 pub type ArrivedAtTimestamp = SystemTime;
 
+#[derive(Debug)]
 pub struct MempoolTransaction {
     pub tx: AccountTransaction,
     pub arrived_at: ArrivedAtTimestamp,
@@ -130,7 +131,7 @@ impl NonceChain {
         };
 
         #[cfg(debug_assertions)] // unknown field `front_tx_hash` in release if debug_assert_eq is used
-        assert_eq!(self.transactions.first().unwrap().0.tx_hash(), self.front_tx_hash);
+        assert_eq!(self.transactions.first().expect("Getting the first tx").0.tx_hash(), self.front_tx_hash);
 
         if force {
             self.transactions.replace(OrderMempoolTransactionByNonce(mempool_tx));
@@ -326,14 +327,11 @@ impl MempoolInner {
         Some(mempool_tx)
     }
 
-    pub fn pop_next_chunk(&mut self, dest: &mut Vec<MempoolTransaction>, n: usize) {
-        for _ in 0..n {
-            let Some(tx) = self.pop_next() else { break };
-            dest.push(tx);
-        }
+    pub fn pop_next_chunk(&mut self, dest: &mut impl Extend<MempoolTransaction>, n: usize) {
+        dest.extend((0..n).map_while(|_| self.pop_next()))
     }
 
-    pub fn re_add_txs(&mut self, txs: Vec<MempoolTransaction>) {
+    pub fn re_add_txs(&mut self, txs: impl IntoIterator<Item = MempoolTransaction>) {
         for tx in txs {
             let force = true;
             self.insert_tx(tx, force).expect("Force insert tx should not error");
@@ -349,10 +347,7 @@ mod tests {
         test_utils::{contracts::FeatureContract, CairoVersion},
         transaction::transactions::{DeclareTransaction, InvokeTransaction},
     };
-    use proptest::{
-        arbitrary::{any, Arbitrary},
-        strategy::{BoxedStrategy, Strategy},
-    };
+    use proptest::prelude::*;
     use proptest_derive::Arbitrary;
     use starknet_api::{
         data_availability::DataAvailabilityMode,
@@ -531,6 +526,7 @@ mod tests {
     }
 
     proptest::proptest! {
+        #![proptest_config(ProptestConfig::with_cases(5))] // comment this when developing, this is mostly for faster ci & whole workspace `cargo test`
         #[test]
         fn proptest_mempool(pb in any::<MempoolInvariantsProblem>()) {
             let _ = env_logger::builder().is_test(true).try_init();

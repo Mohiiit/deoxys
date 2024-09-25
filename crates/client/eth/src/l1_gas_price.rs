@@ -2,10 +2,10 @@ use crate::client::EthereumClient;
 use alloy::eips::BlockNumberOrTag;
 use alloy::providers::Provider;
 use anyhow::Context;
-use dc_mempool::{GasPriceProvider, L1DataProvider};
+use mc_mempool::{GasPriceProvider, L1DataProvider};
 use std::time::{Duration, UNIX_EPOCH};
 
-use dp_utils::wait_or_graceful_shutdown;
+use mp_utils::wait_or_graceful_shutdown;
 use std::time::SystemTime;
 
 pub async fn gas_price_worker_once(
@@ -93,33 +93,23 @@ mod eth_client_gas_price_worker_test {
     use super::*;
     use crate::client::eth_client_getter_test::create_ethereum_client;
     use alloy::node_bindings::Anvil;
-    use dc_mempool::GasPriceProvider;
     use httpmock::{MockServer, Regex};
-    use rstest::*;
+    use mc_mempool::GasPriceProvider;
+    use serial_test::serial;
     use std::time::SystemTime;
     use tokio::task::JoinHandle;
     use tokio::time::{timeout, Duration};
+    const ANOTHER_ANVIL_PORT: u16 = 8546;
+    const L1_BLOCK_NUMBER: u64 = 20395662;
+    const FORK_URL: &str = "https://eth.merkle.io";
 
-    #[fixture]
-    #[once]
-    pub fn eth_client_with_mock() -> (MockServer, EthereumClient) {
-        let server = MockServer::start();
-        let addr = format!("http://{}", server.address());
-        let eth_client = create_ethereum_client(Some(&addr));
-        (server, eth_client)
-    }
-
-    #[fixture]
-    #[once]
-    pub fn eth_client() -> EthereumClient {
-        create_ethereum_client(None)
-    }
-
+    #[serial]
     #[tokio::test]
     async fn gas_price_worker_when_infinite_loop_true_works() {
         let anvil = Anvil::new()
-            .fork("https://eth.merkle.io")
-            .fork_block_number(20395662)
+            .fork(FORK_URL)
+            .fork_block_number(L1_BLOCK_NUMBER)
+            .port(ANOTHER_ANVIL_PORT)
             .try_spawn()
             .expect("issue while forking for the anvil");
         let eth_client = create_ethereum_client(Some(anvil.endpoint().as_str()));
@@ -133,7 +123,7 @@ mod eth_client_gas_price_worker_test {
         });
 
         // Wait for a short duration to allow the worker to run
-        tokio::time::sleep(Duration::from_secs(3)).await;
+        tokio::time::sleep(Duration::from_secs(10)).await;
 
         // Abort the worker task
         worker_handle.abort();
@@ -154,11 +144,13 @@ mod eth_client_gas_price_worker_test {
         assert_eq!(updated_price.eth_l1_data_gas_price, 1);
     }
 
+    #[serial]
     #[tokio::test]
     async fn gas_price_worker_when_infinite_loop_false_works() {
         let anvil = Anvil::new()
-            .fork("https://eth.merkle.io")
-            .fork_block_number(20395662)
+            .fork(FORK_URL)
+            .fork_block_number(L1_BLOCK_NUMBER)
+            .port(ANOTHER_ANVIL_PORT)
             .try_spawn()
             .expect("issue while forking for the anvil");
         let eth_client = create_ethereum_client(Some(anvil.endpoint().as_str()));
@@ -176,13 +168,12 @@ mod eth_client_gas_price_worker_test {
         assert_eq!(updated_price.eth_l1_data_gas_price, 1);
     }
 
+    #[serial]
     #[tokio::test]
     async fn gas_price_worker_when_eth_fee_history_fails_should_fails() {
         let mock_server = MockServer::start();
         let addr = format!("http://{}", mock_server.address());
         let eth_client = create_ethereum_client(Some(&addr));
-
-        println!("add is: {:?} ", addr.as_str());
 
         let mock = mock_server.mock(|when, then| {
             when.method("POST").path("/").json_body_obj(&serde_json::json!({
@@ -236,15 +227,22 @@ mod eth_client_gas_price_worker_test {
         mock.assert();
     }
 
-    #[rstest]
+    #[serial]
     #[tokio::test]
-    async fn update_gas_price_works(eth_client: &'static EthereumClient) {
+    async fn update_gas_price_works() {
+        let anvil = Anvil::new()
+            .fork(FORK_URL)
+            .fork_block_number(L1_BLOCK_NUMBER)
+            .port(ANOTHER_ANVIL_PORT)
+            .try_spawn()
+            .expect("issue while forking for the anvil");
+        let eth_client = create_ethereum_client(Some(anvil.endpoint().as_str()));
         let l1_gas_provider = GasPriceProvider::new();
 
         l1_gas_provider.update_last_update_timestamp();
 
         // Update gas prices
-        update_gas_price(eth_client, l1_gas_provider.clone()).await.expect("Failed to update gas prices");
+        update_gas_price(&eth_client, l1_gas_provider.clone()).await.expect("Failed to update gas prices");
 
         // Access the updated gas prices
         let updated_prices = l1_gas_provider.get_gas_prices();

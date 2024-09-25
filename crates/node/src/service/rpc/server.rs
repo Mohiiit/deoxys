@@ -8,7 +8,6 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use anyhow::Context;
-use dp_utils::wait_or_graceful_shutdown;
 use forwarded_header_value::ForwardedHeaderValue;
 use hyper::header::{HeaderName, HeaderValue};
 use hyper::server::conn::AddrStream;
@@ -25,7 +24,9 @@ use tokio::task::JoinSet;
 use tower::Service;
 use tower_http::cors::{AllowOrigin, CorsLayer};
 
-use super::middleware::{Metrics, MiddlewareLayer, RpcMetrics};
+use mp_utils::wait_or_graceful_shutdown;
+
+use super::middleware::{Metrics, MiddlewareLayer, RpcMetrics, VersionMiddlewareLayer};
 
 const MEGABYTE: u32 = 1024 * 1024;
 
@@ -91,6 +92,7 @@ pub async fn start_server(
 		.option_layer(host_filter)
 		// Proxy `GET /health` requests to internal `system_health` method.
 		// .layer(ProxyGetRequestLayer::new("/health", "system_health")?)
+        .layer(VersionMiddlewareLayer)
 		.layer(try_into_cors(cors.as_ref())?);
 
     let builder = jsonrpsee::server::Server::builder()
@@ -182,7 +184,7 @@ pub async fn start_server(
     });
 
     let server = hyper::Server::from_tcp(std_listener)
-        .with_context(|| format!("creating hyper server at: {addr}"))?
+        .with_context(|| format!("Creating hyper server at: {addr}"))?
         .serve(make_service);
 
     join_set.spawn(async move {
@@ -196,7 +198,7 @@ pub async fn start_server(
                 wait_or_graceful_shutdown(stop_handle.shutdown()).await;
             })
             .await
-            .context("running rpc server")
+            .context("Running rpc server")
     });
 
     Ok(server_handle)
@@ -213,7 +215,7 @@ pub(crate) fn host_filtering(enabled: bool, addr: Option<SocketAddr>) -> Option<
     if enabled {
         // NOTE: The listening addresses are whitelisted by default.
         let hosts = [format!("localhost:{port}"), format!("127.0.0.1:{port}"), format!("[::1]:{port}")];
-        Some(HostFilterLayer::new(hosts).unwrap())
+        Some(HostFilterLayer::new(hosts).expect("Invalid host filter"))
     } else {
         None
     }
@@ -221,7 +223,11 @@ pub(crate) fn host_filtering(enabled: bool, addr: Option<SocketAddr>) -> Option<
 
 pub(crate) fn build_rpc_api<M: Send + Sync + 'static>(mut rpc_api: RpcModule<M>) -> RpcModule<M> {
     let mut available_methods = rpc_api.method_names().collect::<Vec<_>>();
+
     // The "rpc_methods" is defined below and we want it to be part of the reported methods.
+    // The available methods will be prefixed by their version, example:
+    // * starknet_V0_7_1_blockNumber,
+    // * starknet_V0_8_0_blockNumber (...)
     available_methods.push("rpc_methods");
     available_methods.sort();
 
@@ -231,7 +237,7 @@ pub(crate) fn build_rpc_api<M: Send + Sync + 'static>(mut rpc_api: RpcModule<M>)
                 "methods": available_methods,
             })
         })
-        .unwrap();
+        .expect("Cannot register method");
 
     rpc_api
 }

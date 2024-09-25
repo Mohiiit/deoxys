@@ -9,8 +9,8 @@ use crate::utils::u256_to_felt;
 use alloy::primitives::{keccak256, FixedBytes, U256};
 use alloy::sol_types::SolValue;
 use blockifier::transaction::transactions::L1HandlerTransaction as BlockifierL1HandlerTransaction;
-use dc_db::{l1_db::LastSyncedEventBlock, DeoxysBackend};
-use dp_utils::channel_wait_or_graceful_shutdown;
+use mc_db::{l1_db::LastSyncedEventBlock, MadaraBackend};
+use mp_utils::channel_wait_or_graceful_shutdown;
 use starknet_api::core::{ChainId, ContractAddress, EntryPointSelector, Nonce};
 use starknet_api::transaction::{
     Calldata, Fee, L1HandlerTransaction, Transaction, TransactionHash, TransactionVersion,
@@ -39,7 +39,7 @@ impl EthereumClient {
     }
 }
 
-pub async fn sync(backend: &DeoxysBackend, client: &EthereumClient, chain_id: &ChainId) -> anyhow::Result<()> {
+pub async fn sync(backend: &MadaraBackend, client: &EthereumClient, chain_id: &ChainId) -> anyhow::Result<()> {
     tracing::info!("⟠ Starting L1 Messages Syncing...");
 
     let last_synced_event_block = match backend.messaging_last_synced_l1_block_with_event() {
@@ -122,7 +122,7 @@ pub async fn sync(backend: &DeoxysBackend, client: &EthereumClient, chain_id: &C
 }
 
 async fn process_l1_message(
-    backend: &DeoxysBackend,
+    backend: &MadaraBackend,
     event: &LogMessageToL2,
     l1_block_number: &Option<u64>,
     event_index: &Option<u64>,
@@ -207,7 +207,7 @@ fn get_l1_to_l2_msg_hash(event: &LogMessageToL2) -> anyhow::Result<FixedBytes<32
 }
 
 #[cfg(test)]
-mod tests {
+mod l1_messaging_tests {
 
     use std::{sync::Arc, time::Duration};
 
@@ -228,9 +228,10 @@ mod tests {
         sol,
         transports::http::{Client, Http},
     };
-    use dc_db::DatabaseService;
-    use dc_metrics::MetricsService;
-    use dp_block::chain_config::ChainConfig;
+    use mc_db::DatabaseService;
+    use mc_metrics::{MetricsRegistry, MetricsService};
+    use mp_chain_config::ChainConfig;
+    use mp_utils::tests_common::*;
     use rstest::*;
     use starknet_api::core::Nonce;
     use tempfile::TempDir;
@@ -334,7 +335,7 @@ mod tests {
         println!("Anvil started and running at `{}`", anvil.endpoint());
 
         // Set up chain info
-        let chain_config = Arc::new(ChainConfig::test_config());
+        let chain_config = Arc::new(ChainConfig::test_config().unwrap());
 
         // Set up database paths
         let temp_dir = TempDir::new().expect("issue while creating temporary directory");
@@ -343,14 +344,14 @@ mod tests {
 
         // Initialize database service
         let db = Arc::new(
-            DatabaseService::new(&base_path, backup_dir, false, chain_config.clone())
+            DatabaseService::new(&base_path, backup_dir, false, chain_config.clone(), &MetricsRegistry::dummy())
                 .await
                 .expect("Failed to create database service"),
         );
 
         // Set up metrics service
         let prometheus_service = MetricsService::new(true, false, 9615).unwrap();
-        let l1_block_metrics = L1BlockMetrics::register(&prometheus_service.registry()).unwrap();
+        let l1_block_metrics = L1BlockMetrics::register(prometheus_service.registry()).unwrap();
 
         // Set up provider
         let rpc_url: Url = anvil.endpoint().parse().expect("issue while parsing");
@@ -385,7 +386,7 @@ mod tests {
     #[rstest]
     #[traced_test]
     #[tokio::test]
-    async fn e2e_test_basic_workflow(#[future] setup_test_env: TestRunner) {
+    async fn e2e_test_basic_workflow(#[future] setup_test_env: TestRunner, _set_workdir: ()) {
         let TestRunner { chain_config, db_service: db, dummy_contract: contract, eth_client, anvil: _anvil } =
             setup_test_env.await;
 
@@ -437,7 +438,7 @@ mod tests {
     #[rstest]
     #[traced_test]
     #[tokio::test]
-    async fn e2e_test_already_processed_event(#[future] setup_test_env: TestRunner) {
+    async fn e2e_test_already_processed_event(#[future] setup_test_env: TestRunner, _set_workdir: ()) {
         let TestRunner { chain_config, db_service: db, dummy_contract: contract, eth_client, anvil: _anvil } =
             setup_test_env.await;
 
@@ -484,7 +485,7 @@ mod tests {
     #[rstest]
     #[traced_test]
     #[tokio::test]
-    async fn e2e_test_message_canceled(#[future] setup_test_env: TestRunner) {
+    async fn e2e_test_message_canceled(#[future] setup_test_env: TestRunner, _set_workdir: ()) {
         let TestRunner { chain_config, db_service: db, dummy_contract: contract, eth_client, anvil: _anvil } =
             setup_test_env.await;
 

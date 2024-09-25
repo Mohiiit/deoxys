@@ -1,13 +1,44 @@
-# Deoxys Changelog
+# Madara Changelog
 
 ## Next release
 
+- fix(block-production): fix bouncer calculation and declared classes
+- fix: Fix pending block sync and add real FGW tests
+- test: tests added for verify and apply task in l2 sync
+- fix: UDC cairo 0 migration & events logic fix
+- fix: response of spec version rpc call fixed
+- tests: integration test for l2 fetch task added
+- refactor: calculate class hashes in devnet
+- feat: add config file and preset configure chain
+- refactor: change default chain id and add custom flag to override
+- fix: generate a fixed set of public and private keys for devnet
+- fix: defaulted l1 gas price in devnet mode
+- fix: fixed anvil port value in tests
+- fix: flaky tests in gas price worker fixed
+- ci: add coveralls report
+- test: added tests for declare and deploy transactions
+- fix: pending block must always be returned in rpc even if none is in db
+- fix: fixed the starting block arg with an ignore_block_order argument
+- docs: fixed Docker Compose instructions
+- fix: removed unused dependencies with udeps and machete
+- feat: add devnet via `--devnet` cli argument
+- refactor: class import from FGW
+- code docs: documented how get_storage_at is implemented
+- fix: L1 rpc <=> network mismatch
+- feat: rpc versioning
+- feat: bumping Starknet version from v0.13.2 to Starknet v0.13.2.1
+- fix: replaced old namings with adapted namings
+- refactor: block import is now centrally done in a single crate
+- tests: add e2e tests for rpc read methods
+- tests: add e2e tests for the node
+- fix: fixed some readme stuff
 - feat: gas price provider added for block production
 - feat: l1 sync service
 - feat: gas price worker for l1
 - test: tests added for eth client and event subscription
 - feat: Added l1->l2 messaging
 - test: add unitests primitives
+- tests: add e2e tests for the node
 - tests: add tests for the rpcs endpoints
 - fix: pending contract storage not stored properly
 - test: add tests crate `db`
@@ -72,7 +103,7 @@
 - feat(infra): Added boilerplate to deploy a grafana/prometheus dashboard
 - refacor: use db hash
 - refactor: l2-sync
-- refactor: remove crate dp-mapping-sync
+- refactor: remove crate mp-mapping-sync
 - fix(rpc): get_nonce
 - fix(rpc): get_class
 - refactor: mapping db
@@ -83,13 +114,13 @@
 - remove RuntimeApi on RPC
 - feat(metrics): Added sync time metrics
 - refactor: using const and OnceCell instead of lazy_static
-- refactor: remove crate dp-storage
+- refactor: remove crate mp-storage
 - feat(infra): corrected dockerfile + docker-compose
 - fix(rpc): error handling
 - fix(lib): updated core libs to match oss
 - fix: state root - replaced_classes commit
 - feat: fetch block and state update in only one request
-- feat: added deoxys launcher script
+- feat: added madara launcher script
 - fix: creation of the block context
 - fix: is_missing_class
 - fix: state root - replaced_classes
@@ -154,7 +185,7 @@
 - feat(rpc): add pending block to `get_block_with_receipts` rpc call
 - chore: update bonsai-trie (benefit from perf boost)
 - feat(rpc): add `get_block_with_receipts` rpc call
-- refactor: remove crate dp-state, dp-fee, dp-messages
+- refactor: remove crate mp-state, mp-fee, mp-messages
 - fix(class): Fix class conversions to support legacy Sierra versions
 - feat: rebase blockifier
 - feat(check): Added a state root check to ensure synced compatibility
@@ -162,7 +193,7 @@
 - feat(storage): finished migrating contract storage to our backend bonsai trie dbs
 - feat(storage): set up type-safe bonsai storage abstractions for usage in RPC
 - fix(root): fix state root computation
-- refactor: refactor dc-db crate
+- refactor: refactor mc-db crate
 - feat(api_key): api key passed to FetchConfig correctly
 - feat(api_key): Added support for --gateway-api to avoid rate limit from the gateway
 - fix(latest): Retrieve latest synced block via internal client
@@ -171,7 +202,7 @@
 - feat: add an optional TUI dashboard
 - feat(bonsai): Bumped bonsai lib to latest opti
 - refactor(generic): reduced runtime dependence on generics
-- fix(sync): Cleaned dc-sync isolating fetch process + added shared SyncStatus
+- fix(sync): Cleaned mc-sync isolating fetch process + added shared SyncStatus
 - feat(self-hosted): host our own runner
 - fix(deps): Removed unused dependencies
 - feat(multi-trie): Added support for persistent storage tries
@@ -185,10 +216,10 @@
 - fix(worflows): fix toolchain and cache issue
 - feat: Removal of the hardcoded mainnet configuration
 - refactor: pass new CI
-- fix(workflows): Fix deoxys CI
+- fix(workflows): Fix madara CI
 - feat(rpc): add_invoke_tx, add_deploy_account_tx, add_declare_tx
 - feat(rpc): tx_receipt, re-execute tx
-- feat(script): added CI scripts for starting Deoxys and comparing JSON RPC
+- feat(script): added CI scripts for starting Madara and comparing JSON RPC
   calls
 - perf(verify_l2): parallelized l2 state root update
 - perf(state_commitment): parallelized state commitment hash computations
@@ -229,7 +260,7 @@
 - refacto: early exit txs fee estimation when one fails
 - dev: fix linter warning in README.md
 - fix: remove waiting loop from `getTxReceipt`
-- feat: types in `dp-transactions` impl a method to get their version
+- feat: types in `mp-transactions` impl a method to get their version
 - feat: make L1 gas price a `const` of the `RuntimeConfig`
 - fix: broken class hashes and contracts in genesis
 - refactor: rename LAST_SYNCED_L1_BLOCK to be more clear
@@ -270,7 +301,7 @@
 - fix(node/commands): md5 are also checked when running setup --from-local
 - feat(data-availability): extend eth config with poll interval
 - fix(snos-output): expose snos codec, remove unused `get_starknet_messages`
-  runtime method, and unnecessary dp-snos-output dependencies
+  runtime method, and unnecessary mp-snos-output dependencies
 - feat(program-hash): add new pallet constant for Starknet OS progam hash;
   expose runtime getter method; add dedicated crate to manage versions
 - feat(runtime): expose fee token address getter method
@@ -389,7 +420,7 @@
 - fix: update madara infra to main branch
 - fix: update `Cargo.lock`
 - fix: rpc test failing
-- refactor: exported chain id constant in dp-chain-id crate and added one for
+- refactor: exported chain id constant in mp-chain-id crate and added one for
   SN_MAIN
 - ci: disable pr close workflow
 - ci: add ci verification for detecting genesis changes and config hashes

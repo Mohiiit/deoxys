@@ -1,4 +1,3 @@
----
 name: Task - Integration Tests
 
 on:
@@ -7,24 +6,46 @@ on:
 
 jobs:
   coverage:
-    # sadly, for now we have to "rebuild" for the coverage
+    permissions:
+      pull-requests: write
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2 # use a different cache key as coverae uses custom rustc args
+      - uses: dtolnay/rust-toolchain@master
         with:
-          shared-key: "cache"
-          save-if: false
+          toolchain: 1.78
       - name: Setup build deps
         run: |
           sudo apt-get update
           sudo apt-get install -y clang llvm libudev-dev protobuf-compiler
+      - uses: rui314/setup-mold@v1
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
-      - name: Coverage
-        run: cargo llvm-cov --codecov --output-path codecov.json
-      - name: Upload coverage to codecov.io
-        uses: codecov/codecov-action@v3
+
+      - uses: software-mansion/setup-scarb@v1
         with:
-          files: codecov.json
-          fail_ci_if_error: false
+          scarb-version: "2.8.2"
+
+      - uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: nightly
+
+      - name: Build and run tests
+        run: |
+          source <(cargo llvm-cov show-env --export-prefix)
+          cargo build --bin madara --profile dev
+          export COVERAGE_BIN=$(realpath target/debug/madara)
+          rm -f target/madara-* lcov.info
+          cargo test --profile dev -- --test-threads=1
+
+      - name: Generate coverage info
+        run: |
+          source <(cargo llvm-cov show-env --export-prefix)
+          cargo llvm-cov report --lcov --output-path lcov.info
+
+      - name: Coveralls
+        uses: coverallsapp/github-action@v2
+        with:
+          files: lcov.info
+          debug: true

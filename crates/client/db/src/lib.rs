@@ -1,4 +1,4 @@
-//! Deoxys database
+//! Madara database
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -10,8 +10,9 @@ use bonsai_db::{BonsaiDb, DatabaseKeyMapping};
 use bonsai_trie::id::BasicId;
 use bonsai_trie::{BonsaiStorage, BonsaiStorageConfig};
 use db_metrics::DbMetrics;
-use dp_block::chain_config::ChainConfig;
-use dp_utils::service::Service;
+use mc_metrics::MetricsRegistry;
+use mp_chain_config::ChainConfig;
+use mp_utils::service::Service;
 use rocksdb::backup::{BackupEngine, BackupEngineOptions};
 
 pub mod block_db;
@@ -25,10 +26,12 @@ pub mod class_db;
 pub mod contract_db;
 pub mod db_block_id;
 pub mod db_metrics;
+pub mod devnet_db;
 pub mod l1_db;
 pub mod storage_updates;
+pub mod tests;
 
-pub use error::{DeoxysStorageError, TrieType};
+pub use error::{MadaraStorageError, TrieType};
 use starknet_types_core::hash::{Pedersen, Poseidon, StarkHash};
 use tokio::sync::{mpsc, oneshot};
 
@@ -109,8 +112,6 @@ fn spawn_backup_db_task(
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Column {
-    Meta,
-
     // Blocks storage
     // block_n => Block info
     BlockNToBlockInfo,
@@ -168,6 +169,9 @@ pub enum Column {
 
     L1Messaging,
     L1MessagingNonce,
+
+    /// Devnet: stores the private keys for the devnet predeployed contracts
+    Devnet,
 }
 
 impl fmt::Debug for Column {
@@ -186,7 +190,6 @@ impl Column {
     pub const ALL: &'static [Self] = {
         use Column::*;
         &[
-            Meta,
             BlockNToBlockInfo,
             BlockNToBlockInner,
             TxHashToBlockN,
@@ -216,6 +219,7 @@ impl Column {
             PendingContractToClassHashes,
             PendingContractToNonces,
             PendingContractStorage,
+            Devnet,
         ]
     };
     pub const NUM_COLUMNS: usize = Self::ALL.len();
@@ -223,7 +227,6 @@ impl Column {
     pub(crate) fn rocksdb_name(&self) -> &'static str {
         use Column::*;
         match self {
-            Meta => "meta",
             BlockNToBlockInfo => "block_n_to_block_info",
             BlockNToBlockInner => "block_n_to_block_inner",
             TxHashToBlockN => "tx_hash_to_block_n",
@@ -253,6 +256,7 @@ impl Column {
             PendingContractToClassHashes => "pending_contract_to_class_hashes",
             PendingContractToNonces => "pending_contract_to_nonces",
             PendingContractStorage => "pending_contract_storage",
+            Devnet => "devnet",
         }
     }
 
@@ -296,19 +300,20 @@ impl DatabaseExt for DB {
     }
 }
 
-/// Deoxys client database backend singleton.
+/// Madara client database backend singleton.
 #[derive(Debug)]
-pub struct DeoxysBackend {
+pub struct MadaraBackend {
     backup_handle: Option<mpsc::Sender<BackupRequest>>,
     db: Arc<DB>,
     last_flush_time: Mutex<Option<Instant>>,
     chain_config: Arc<ChainConfig>,
+    db_metrics: DbMetrics,
     #[cfg(feature = "testing")]
     _temp_dir: Option<tempfile::TempDir>,
 }
 
 pub struct DatabaseService {
-    handle: Arc<DeoxysBackend>,
+    handle: Arc<MadaraBackend>,
 }
 
 impl DatabaseService {
@@ -330,18 +335,29 @@ impl DatabaseService {
         backup_dir: Option<PathBuf>,
         restore_from_latest_backup: bool,
         chain_config: Arc<ChainConfig>,
+        metrics_registry: &MetricsRegistry,
     ) -> anyhow::Result<Self> {
         log::info!("💾 Opening database at: {}", base_path.display());
 
-        let handle =
-            DeoxysBackend::open(base_path.to_owned(), backup_dir.clone(), restore_from_latest_backup, chain_config)
-                .await?;
+        let handle = MadaraBackend::open(
+            base_path.to_owned(),
+            backup_dir.clone(),
+            restore_from_latest_backup,
+            chain_config,
+            metrics_registry,
+        )
+        .await?;
 
         Ok(Self { handle })
     }
 
-    pub fn backend(&self) -> &Arc<DeoxysBackend> {
+    pub fn backend(&self) -> &Arc<MadaraBackend> {
         &self.handle
+    }
+
+    #[cfg(any(test, feature = "testing"))]
+    pub fn open_for_testing(chain_config: Arc<ChainConfig>) -> Self {
+        Self { handle: MadaraBackend::open_for_testing(chain_config) }
     }
 }
 
@@ -352,25 +368,27 @@ struct BackupRequest {
     db: Arc<DB>,
 }
 
-impl Drop for DeoxysBackend {
+impl Drop for MadaraBackend {
     fn drop(&mut self) {
         log::info!("⏳ Gracefully closing the database...");
+        self.maybe_flush(true).expect("Error when flushing the database"); // flush :)
     }
 }
 
-impl DeoxysBackend {
+impl MadaraBackend {
     pub fn chain_config(&self) -> &Arc<ChainConfig> {
         &self.chain_config
     }
 
     #[cfg(feature = "testing")]
-    pub fn open_for_testing(chain_config: Arc<ChainConfig>) -> Arc<DeoxysBackend> {
+    pub fn open_for_testing(chain_config: Arc<ChainConfig>) -> Arc<MadaraBackend> {
         let temp_dir = tempfile::TempDir::with_prefix("madara-test").unwrap();
         Arc::new(Self {
             backup_handle: None,
             db: open_rocksdb(temp_dir.as_ref(), true).unwrap(),
             last_flush_time: Default::default(),
             chain_config,
+            db_metrics: DbMetrics::register(&MetricsRegistry::dummy()).unwrap(),
             _temp_dir: Some(temp_dir),
         })
     }
@@ -381,7 +399,8 @@ impl DeoxysBackend {
         backup_dir: Option<PathBuf>,
         restore_from_latest_backup: bool,
         chain_config: Arc<ChainConfig>,
-    ) -> Result<Arc<DeoxysBackend>> {
+        metrics_registry: &MetricsRegistry,
+    ) -> Result<Arc<MadaraBackend>> {
         let db_path = db_config_dir.join("db");
 
         // when backups are enabled, a thread is spawned that owns the rocksdb BackupEngine (it is not thread safe) and it receives backup requests using a mpsc channel
@@ -408,6 +427,7 @@ impl DeoxysBackend {
         let db = open_rocksdb(&db_path, true)?;
 
         let backend = Arc::new(Self {
+            db_metrics: DbMetrics::register(metrics_registry).context("Registering db metrics")?,
             backup_handle,
             db,
             last_flush_time: Default::default(),
@@ -421,12 +441,12 @@ impl DeoxysBackend {
 
     pub fn maybe_flush(&self, force: bool) -> Result<bool> {
         let mut inst = self.last_flush_time.lock().expect("poisoned mutex");
-        let should_flush = force
+        let will_flush = force
             || match *inst {
                 Some(inst) => inst.elapsed() >= Duration::from_secs(5),
                 None => true,
             };
-        if should_flush {
+        if will_flush {
             log::debug!("doing a db flush");
             let mut opts = FlushOptions::default();
             opts.set_wait(true);
@@ -438,7 +458,7 @@ impl DeoxysBackend {
             *inst = Some(Instant::now());
         }
 
-        Ok(should_flush)
+        Ok(will_flush)
     }
 
     pub async fn backup(&self) -> Result<()> {
@@ -466,8 +486,8 @@ impl DeoxysBackend {
                 snapshot_interval: u64::MAX,
             },
         )
-        // UNWRAP: function actually cannot panic
-        .unwrap();
+        // TODO(bonsai-trie): change upstream to reflect that.
+        .expect("New bonsai storage can never error");
 
         bonsai
     }
@@ -496,19 +516,9 @@ impl DeoxysBackend {
         })
     }
 
-    pub fn get_storage_size(&self, db_metrics: &DbMetrics) -> u64 {
-        let mut storage_size = 0;
-
-        for &column in Column::ALL.iter() {
-            let cf_handle = self.db.get_column(column);
-            let cf_metadata = self.db.get_column_family_metadata_cf(&cf_handle);
-            let column_size = cf_metadata.size;
-            storage_size += column_size;
-
-            db_metrics.column_sizes.with_label_values(&[column.rocksdb_name()]).set(column_size as i64);
-        }
-
-        storage_size
+    /// Returns the total storage size
+    pub fn update_metrics(&self) -> u64 {
+        self.db_metrics.update(&self.db)
     }
 }
 
